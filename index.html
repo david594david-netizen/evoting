@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toastmasters Voting System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Confetti for results -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Tone.js for celebration music -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* Custom radio button styling */
+        .vote-radio:checked + div {
+            border-color: #1e3a8a; /* blue-900 */
+            background-color: #eff6ff; /* blue-50 */
+            box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.2);
+        }
+        .vote-radio:checked + div .check-icon {
+            opacity: 1;
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen text-gray-800">
+
+    <!-- Navbar -->
+    <nav class="bg-blue-900 text-white shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-microphone-alt text-2xl text-yellow-400"></i>
+                    <span class="font-bold text-xl tracking-wider">TM Voting System</span>
+                </div>
+                <!-- Navigation Tabs -->
+                <div class="flex space-x-1 sm:space-x-4">
+                    <button onclick="switchTab('admin')" id="tab-admin" class="nav-tab px-3 py-2 rounded-md text-sm font-medium transition-colors bg-blue-800 text-white hover:bg-blue-700">負責人設定</button>
+                    <button onclick="switchTab('vote')" id="tab-vote" class="nav-tab px-3 py-2 rounded-md text-sm font-medium transition-colors text-blue-200 hover:text-white hover:bg-blue-800">會員投票</button>
+                    <button onclick="switchTab('results')" id="tab-results" class="nav-tab px-3 py-2 rounded-md text-sm font-medium transition-colors text-blue-200 hover:text-white hover:bg-blue-800">投票結果</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8" id="main-container">
+        
+        <!-- ================= ADMIN SECTION ================= -->
+        <section id="section-admin" class="fade-in space-y-6 block">
+            <!-- 總會員名單設定 -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="border-b border-gray-200 px-6 py-4 bg-gray-50 flex justify-between items-center">
+                    <h2 class="text-lg font-semibold text-gray-800">1. 管理總會員名單 (Master List)</h2>
+                    <span class="text-sm text-gray-500">已載入預設名單，可額外新增</span>
+                </div>
+                <div class="p-6">
+                    <div class="flex gap-3 mb-3 flex-col sm:flex-row">
+                        <input type="text" id="new-member-input" placeholder="輸入新會員名字 (可輸入多個，用逗號分隔)" class="block w-full px-3 py-2 rounded-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <button onclick="addMembers()" class="inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition-colors whitespace-nowrap">
+                            <i class="fas fa-user-plus mr-2"></i> 新增名單
+                        </button>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-500 font-medium" id="master-members-count">目前總會員數：0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="border-b border-gray-200 px-6 py-4 bg-gray-50 flex justify-between items-center">
+                    <h2 class="text-lg font-semibold text-gray-800">2. 設定各項競賽候選人</h2>
+                </div>
+                
+                <div class="p-6" id="admin-categories-container">
+                    <!-- Dynamic content -->
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button onclick="switchTab('vote')" class="inline-flex items-center px-6 py-3 border border-transparent shadow-sm text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
+                    設定完成，開放投票 <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- ================= VOTING SECTION ================= -->
+        <section id="section-vote" class="fade-in space-y-6 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="border-b border-gray-200 px-6 py-4 bg-gray-50">
+                    <h2 class="text-lg font-semibold text-gray-800">2. 填寫選票</h2>
+                </div>
+                
+                <div class="p-6 space-y-8">
+                    <!-- Voter Identification -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">您的名字 (Voter's Name) <span class="text-red-500">*</span></label>
+                        <input type="text" id="voter-name" placeholder="請輸入您的名字，以確保不重複投票" class="block w-full px-3 py-2 rounded-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+
+                    <!-- Voting Categories -->
+                    <div id="voting-categories-container" class="space-y-8">
+                        <!-- Dynamic content populated by JS -->
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="pt-4 border-t border-gray-200 flex justify-center">
+                        <button onclick="submitVote()" class="inline-flex items-center px-8 py-3 border border-transparent shadow-sm text-lg font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 w-full sm:w-auto justify-center">
+                            <i class="fas fa-paper-plane mr-2"></i> 送出選票
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= RESULTS SECTION ================= -->
+        <section id="section-results" class="fade-in space-y-6 hidden">
+            <div class="text-center py-6">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2">開票結果</h2>
+                <p class="text-gray-500" id="total-voters-count">目前共 0 人投票</p>
+            </div>
+
+            <!-- 將 md:grid-cols-2 移除，改為單排，並加寬間距 -->
+            <div class="grid grid-cols-1 gap-8" id="results-container">
+                <!-- Dynamic content -->
+            </div>
+            
+            <div class="flex justify-center mt-8">
+                 <button onclick="calculateAndShowResults()" class="inline-flex items-center px-6 py-3 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                    <i class="fas fa-sync-alt mr-2"></i> 重新整理票數
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Custom Modal for Notifications (Replacing alert) -->
+    <div id="custom-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeModal()"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full sm:p-6">
+                <div>
+                    <div id="modal-icon-container" class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100">
+                        <i id="modal-icon" class="fas fa-info text-blue-600 text-xl"></i>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">提示</h3>
+                        <div class="mt-2">
+                            <p class="text-sm text-gray-500" id="modal-message"></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6">
+                    <button type="button" onclick="closeModal()" class="inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm">
+                        確定
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Password Modal -->
+    <div id="password-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closePasswordModal()"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full sm:p-6">
+                <div>
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
+                        <i class="fas fa-lock text-yellow-600 text-xl"></i>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">請輸入負責人密碼</h3>
+                        <p class="text-sm text-gray-500 mt-1">進入設定與開票頁面需要授權</p>
+                        <div class="mt-4">
+                            <input type="password" id="admin-password-input" placeholder="預設密碼：1234" class="block w-full px-3 py-2 rounded-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-center font-mono text-lg">
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6 flex space-x-3">
+                    <button type="button" onclick="closePasswordModal()" class="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:text-sm">
+                        取消
+                    </button>
+                    <button type="button" onclick="verifyPassword()" class="inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-yellow-600 text-base font-medium text-white hover:bg-yellow-700 focus:outline-none sm:text-sm">
+                        確認解鎖
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State Management
+        let isAdminVerified = false;
+        let pendingTab = '';
+        
+        const categories = [
+            "BEST PERFORMER",
+            "BEST TABLE TOPIC RESPONDER",
+            "BEST EVALUATOR",
+            "BEST IMPROVED SPEAKER"
+        ];
+        
+        // Data Structure
+        let masterMembers = [
+            "Alan Hsu", "Angeles Wu", "Bianca Wang", "David Lin", "Jacob Tsai", 
+            "Lynn Chang", "Monica Yao", "Ping Hsiao", "Roger Hsu", "Sara Hung", 
+            "Carol Hung", "Simon Lin", "Sunny Lin", "TS Hsieh", "Sheila Chou", 
+            "Kai Kao", "Greg Tsai", "Jefferson Zheng", "Blanche Hsiao", "Julie Yu", 
+            "Maple Hung", "Ray Chen", "Maggie Wu", "Helen Kuo"
+        ]; // 已更新為圖片上的真實名單
+        
+        let nominees = {
+            "BEST PERFORMER": [],
+            "BEST TABLE TOPIC RESPONDER": [],
+            "BEST EVALUATOR": [],
+            "BEST IMPROVED SPEAKER": []
+        };
+        
+        // Array of vote objects: { voter: "Name", votes: { "Category": "Nominee" } }
+        let votesHistory = []; 
+        
+        // Track which results have been revealed
+        let revealedResults = {
+            "BEST PERFORMER": false,
+            "BEST TABLE TOPIC RESPONDER": false,
+            "BEST EVALUATOR": false,
+            "BEST IMPROVED SPEAKER": false
+        };
+
+        // Icons for categories
+        const categoryIcons = {
+            "BEST PERFORMER": "🏆",
+            "BEST TABLE TOPIC RESPONDER": "🗣️",
+            "BEST EVALUATOR": "📝",
+            "BEST IMPROVED SPEAKER": "📈"
+        };
+
+        // Initialize App
+        function init() {
+            document.getElementById('master-members-count').innerText = `目前總會員數：${masterMembers.length}`;
+            renderAdminNominees();
+        }
+
+        // ================= UI / NAVIGATION =================
+        function switchTab(tabId) {
+            // Check for admin privileges on protected tabs
+            if ((tabId === 'admin' || tabId === 'results') && !isAdminVerified) {
+                pendingTab = tabId;
+                document.getElementById('password-modal').classList.remove('hidden');
+                document.getElementById('admin-password-input').value = '';
+                // Focus the input field after modal animation
+                setTimeout(() => document.getElementById('admin-password-input').focus(), 100);
+                return;
+            }
+
+            // Update tabs styling
+            const tabs = ['admin', 'vote', 'results'];
+            tabs.forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                if (t === tabId) {
+                    el.classList.add('bg-blue-800', 'text-white');
+                    el.classList.remove('text-blue-200', 'hover:bg-blue-800');
+                } else {
+                    el.classList.remove('bg-blue-800', 'text-white');
+                    el.classList.add('text-blue-200', 'hover:bg-blue-800');
+                }
+            });
+
+            // Update sections visibility
+            tabs.forEach(t => {
+                document.getElementById(`section-${t}`).classList.add('hidden');
+            });
+            document.getElementById(`section-${tabId}`).classList.remove('hidden');
+
+            // Trigger specific rendering based on tab
+            if (tabId === 'vote') {
+                renderVotingSection();
+            } else if (tabId === 'results') {
+                calculateAndShowResults();
+            }
+        }
+
+        // ================= MODAL NOTIFICATION =================
+        function showModal(title, message, type = 'info') {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-message').innerText = message;
+            
+            const iconContainer = document.getElementById('modal-icon-container');
+            const icon = document.getElementById('modal-icon');
+            
+            if(type === 'error') {
+                iconContainer.className = 'mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100';
+                icon.className = 'fas fa-exclamation-triangle text-red-600 text-xl';
+            } else if (type === 'success') {
+                iconContainer.className = 'mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100';
+                icon.className = 'fas fa-check text-green-600 text-xl';
+            } else {
+                iconContainer.className = 'mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100';
+                icon.className = 'fas fa-info text-blue-600 text-xl';
+            }
+
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('custom-modal').classList.add('hidden');
+        }
+
+        function closePasswordModal() {
+            document.getElementById('password-modal').classList.add('hidden');
+        }
+
+        function verifyPassword() {
+            const pwd = document.getElementById('admin-password-input').value;
+            if (pwd === '1234') { // Admin password
+                isAdminVerified = true;
+                closePasswordModal();
+                switchTab(pendingTab);
+            } else {
+                showModal("密碼錯誤", "您輸入的密碼不正確，無法進入。 (預設為 1234)", "error");
+            }
+        }
+
+        // ================= ADMIN LOGIC =================
+        function addMembers() {
+            const input = document.getElementById('new-member-input').value;
+            if (!input.trim()) {
+                showModal("提示", "請輸入欲新增的會員名字", "info");
+                return;
+            }
+            
+            // Split by comma
+            const names = input.split(/[,，]+/).map(n => n.trim()).filter(n => n.length > 0);
+            
+            let addedCount = 0;
+            // Add unique names to master list
+            names.forEach(name => {
+                if (!masterMembers.includes(name)) {
+                    masterMembers.push(name);
+                    addedCount++;
+                }
+            });
+            
+            document.getElementById('new-member-input').value = '';
+            document.getElementById('master-members-count').innerText = `目前總會員數：${masterMembers.length}`;
+            
+            if (addedCount > 0) {
+                showModal("成功", `已成功新增 ${addedCount} 位名單！`, "success");
+            } else {
+                showModal("提示", "輸入的名字已存在名單中。", "info");
+            }
+            
+            renderAdminNominees();
+        }
+
+        function toggleNominee(category, name) {
+            const idx = nominees[category].indexOf(name);
+            if (idx > -1) {
+                nominees[category].splice(idx, 1);
+            } else {
+                nominees[category].push(name);
+            }
+            renderAdminNominees();
+        }
+
+        function selectAllNominees(category) {
+            if (masterMembers.length === 0) {
+                showModal("提示", "請先確認總會員名單", "error");
+                return;
+            }
+            nominees[category] = [...masterMembers];
+            renderAdminNominees();
+        }
+
+        function renderAdminNominees() {
+            const container = document.getElementById('admin-categories-container');
+
+            if (masterMembers.length === 0) {
+                container.innerHTML = `<div class="col-span-full text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">請先於上方新增或確認總會員名單。</div>`;
+                return;
+            }
+
+            let html = '';
+            categories.forEach(category => {
+                const list = nominees[category];
+                html += `
+                <div class="mb-8 last:mb-0">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
+                        <h3 class="text-[1.05rem] font-bold text-blue-900 flex items-center">
+                            <span class="mr-2 text-xl">${categoryIcons[category]}</span> ${category}
+                        </h3>
+                        <button onclick="selectAllNominees('${category}')" class="text-xs px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-100 text-gray-600 transition-colors bg-white">
+                            <i class="fas fa-check mr-1"></i> 此獎項全選
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                        ${masterMembers.map(name => {
+                            const isSelected = list.includes(name);
+                            return `
+                            <label class="flex items-center space-x-2 bg-white border ${isSelected ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-gray-200'} rounded-md px-3 py-2 cursor-pointer transition-all hover:border-blue-300">
+                                <input type="checkbox" class="form-checkbox h-4 w-4 text-blue-600 rounded focus:ring-blue-500" 
+                                       ${isSelected ? 'checked' : ''} 
+                                       onchange="toggleNominee('${category}', '${name}')">
+                                <span class="font-medium text-sm ${isSelected ? 'text-blue-900' : 'text-gray-700'} truncate">${name}</span>
+                            </label>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        // ================= VOTING LOGIC =================
+        function renderVotingSection() {
+            const container = document.getElementById('voting-categories-container');
+            container.innerHTML = '';
+
+            let hasAnyNominee = false;
+
+            categories.forEach(category => {
+                const catNominees = nominees[category];
+                if (catNominees.length === 0) return; // Skip empty categories
+                
+                hasAnyNominee = true;
+
+                let optionsHTML = catNominees.map(name => `
+                    <label class="relative cursor-pointer">
+                        <input type="radio" name="vote-${category.replace(/\s+/g, '-')}" value="${name}" class="vote-radio sr-only">
+                        <div class="border border-gray-200 rounded-lg p-4 transition-all hover:border-blue-300 hover:bg-blue-50/50 flex justify-between items-center">
+                            <span class="font-medium text-gray-800">${name}</span>
+                            <i class="fas fa-check-circle text-blue-600 opacity-0 check-icon transition-opacity text-xl"></i>
+                        </div>
+                    </label>
+                `).join('');
+
+                const sectionHTML = `
+                    <div class="bg-gray-50 rounded-lg p-5 border border-gray-100">
+                        <h3 class="text-lg font-bold text-blue-900 mb-4 border-b border-gray-200 pb-2">
+                            ${categoryIcons[category]} ${category}
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            ${optionsHTML}
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += sectionHTML;
+            });
+
+            if (!hasAnyNominee) {
+                container.innerHTML = `<div class="text-center py-10 text-gray-500">負責人尚未設定任何候選人，無法進行投票。</div>`;
+            }
+        }
+
+        function submitVote() {
+            const voterName = document.getElementById('voter-name').value.trim();
+            if (!voterName) {
+                showModal("資料不完整", "請輸入您的名字以進行投票！", "error");
+                return;
+            }
+
+            let currentVote = {};
+            let hasVotedForSomething = false;
+
+            categories.forEach(category => {
+                if (nominees[category].length > 0) {
+                    const selected = document.querySelector(`input[name="vote-${category.replace(/\s+/g, '-')}"]:checked`);
+                    if (selected) {
+                        currentVote[category] = selected.value;
+                        hasVotedForSomething = true;
+                    }
+                }
+            });
+
+            if (!hasVotedForSomething) {
+                showModal("提示", "您尚未圈選任何獎項的候選人喔！", "error");
+                return;
+            }
+
+            // Check if user already voted (overwrite logic for same session)
+            const existingIndex = votesHistory.findIndex(v => v.voter.toLowerCase() === voterName.toLowerCase());
+            if (existingIndex >= 0) {
+                votesHistory[existingIndex].votes = currentVote;
+            } else {
+                votesHistory.push({ voter: voterName, votes: currentVote });
+            }
+
+            // Reset form
+            document.getElementById('voter-name').value = '';
+            document.querySelectorAll('.vote-radio').forEach(r => r.checked = false);
+
+            showModal("投票成功", `感謝您 ${voterName}！您的選票已成功送出。`, "success");
+        }
+
+        // ================= RESULTS LOGIC =================
+        async function playFanfare() {
+            // Ensure audio context is started (required by browsers)
+            await Tone.start();
+            
+            // 改用 PolySynth 支援多音和弦，並增加 release(釋放) 的時間讓尾音延長
+            const synth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "triangle" },
+                envelope: { attack: 0.05, decay: 0.2, sustain: 0.4, release: 2 }
+            }).toDestination();
+            
+            const now = Tone.now();
+            // 演奏更長、更豐富的頒獎典禮和弦
+            synth.triggerAttackRelease(["C4", "E4", "G4"], "8n", now);
+            synth.triggerAttackRelease(["C4", "E4", "G4"], "8n", now + 0.25);
+            synth.triggerAttackRelease(["C4", "E4", "G4"], "8n", now + 0.5);
+            synth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "2n", now + 0.75); // 長音
+            synth.triggerAttackRelease(["G3", "B3", "D4", "G4"], "4n", now + 1.5);  // 轉折
+            synth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "1n", now + 2.0);  // 最終長音
+        }
+
+        function revealResult(category) {
+            revealedResults[category] = true;
+            
+            // Play Celebration Sound
+            playFanfare();
+            
+            // Fire Confetti
+            confetti({
+                particleCount: 150,
+                spread: 80,
+                origin: { y: 0.5 },
+                colors: ['#1e3a8a', '#fbbf24', '#ffffff', '#e11d48']
+            });
+            
+            calculateAndShowResults();
+        }
+
+        function calculateAndShowResults() {
+            document.getElementById('total-voters-count').innerText = `目前共 ${votesHistory.length} 人參與投票`;
+            const container = document.getElementById('results-container');
+            container.innerHTML = '';
+
+            categories.forEach(category => {
+                // Tally votes for this category
+                let tally = {};
+                nominees[category].forEach(n => tally[n] = 0); // Initialize with 0
+
+                votesHistory.forEach(record => {
+                    const votedFor = record.votes[category];
+                    if (votedFor && tally[votedFor] !== undefined) {
+                        tally[votedFor]++;
+                    }
+                });
+
+                // Determine winners (handle ties)
+                let maxVotes = 0;
+                for (let name in tally) {
+                    if (tally[name] > maxVotes) maxVotes = tally[name];
+                }
+
+                let winners = [];
+                if (maxVotes > 0) {
+                    for (let name in tally) {
+                        if (tally[name] === maxVotes) winners.push(name);
+                    }
+                }
+
+                const isRevealed = revealedResults[category];
+
+                // Render category result card - 放大版面與文字
+                let resultContent = '';
+                if (nominees[category].length === 0) {
+                    resultContent = `<p class="text-gray-400 italic text-center py-6">尚無設定候選人</p>`;
+                } else if (maxVotes === 0) {
+                    resultContent = `<p class="text-gray-400 italic text-center py-6">尚未有人投票</p>`;
+                } else if (!isRevealed) {
+                    resultContent = `
+                        <div class="flex flex-col items-center justify-center py-10 fade-in">
+                            <div class="bg-gray-100 p-6 rounded-full mb-6">
+                                <i class="fas fa-lock text-5xl text-gray-400"></i>
+                            </div>
+                            <button onclick="revealResult('${category}')" class="px-8 py-4 text-lg bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-full shadow-lg transform transition hover:-translate-y-1 hover:shadow-xl flex items-center">
+                                <i class="fas fa-eye mr-2"></i> 揭曉得獎者
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    resultContent = `
+                        <div class="mb-4 fade-in">
+                            <p class="text-base text-gray-500 uppercase tracking-wide font-semibold">Winner(s)</p>
+                            <div class="mt-3 flex flex-wrap gap-3">
+                                ${winners.map(w => `<span class="inline-flex items-center px-6 py-3 rounded-full text-2xl font-bold bg-yellow-100 text-yellow-800 border border-yellow-200 shadow-sm"><i class="fas fa-crown mr-2 text-yellow-500"></i> ${w}</span>`).join('')}
+                            </div>
+                            <p class="mt-4 text-base font-medium text-gray-600 bg-gray-50 inline-block px-4 py-2 rounded-md border border-gray-200">最高得票數: ${maxVotes} 票</p>
+                        </div>
+                        
+                        <div class="mt-6 pt-6 border-t border-gray-100 fade-in">
+                            <p class="text-sm text-gray-500 mb-3">其他得票概況:</p>
+                            <div class="space-y-2">
+                                ${Object.keys(tally).sort((a,b) => tally[b] - tally[a]).map(name => {
+                                    if(tally[name] === maxVotes) return ''; // Skip winners
+                                    return `
+                                    <div class="flex justify-between items-center text-base px-3 py-2 rounded hover:bg-gray-50">
+                                        <span class="text-gray-600">${name}</span>
+                                        <span class="text-gray-500 font-mono">${tally[name]} 票</span>
+                                    </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                const cardHTML = `
+                    <div class="bg-white rounded-xl shadow-md border border-gray-200 p-8 flex flex-col h-full transform transition ${isRevealed ? 'border-yellow-300 ring-2 ring-yellow-100' : ''}">
+                        <h3 class="text-2xl font-bold text-blue-900 mb-6 flex items-center border-b border-gray-100 pb-4">
+                            <span class="text-3xl mr-3">${categoryIcons[category]}</span>
+                            ${category}
+                        </h3>
+                        <div class="flex-grow flex flex-col justify-center">
+                            ${resultContent}
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += cardHTML;
+            });
+        }
+
+        // Run init on load
+        window.onload = init;
+    </script>
+</body>
+</html>

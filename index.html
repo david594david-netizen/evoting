@@ -207,7 +207,16 @@
         import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        
+        // 更安全的環境變數解析，避免因格式錯誤導致雲端連線中斷
+        let firebaseConfig = null;
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                firebaseConfig = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
+            }
+        } catch (e) {
+            console.error("Firebase config parse error:", e);
+        }
 
         let auth, db;
 
@@ -255,14 +264,20 @@
         // ================= 雲端資料同步初始化 =================
         async function initSystem() {
             if (firebaseConfig) {
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
                 try {
-                    // 系統規定：登入驗證
-                    if (typeof __initial_auth_token !== 'undefined') {
-                        await signInWithCustomToken(auth, __initial_auth_token);
+                    const app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    // 更穩定的驗證機制：優先使用授權 Token，失敗則匿名登入
+                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    if (token) {
+                        try {
+                            await signInWithCustomToken(auth, token);
+                        } catch (e) {
+                            console.warn("Custom token failed, falling back to anonymous", e);
+                            await signInAnonymously(auth);
+                        }
                     } else {
                         await signInAnonymously(auth);
                     }
@@ -276,11 +291,12 @@
                                 if (data.masterMembers) masterMembers = data.masterMembers;
                                 if (data.nominees) nominees = data.nominees;
                                 if (data.revealedResults) revealedResults = data.revealedResults;
-                                updateUI();
                             } else {
-                                saveStateToCloud(); // 初次建立雲端資料檔
+                                // 只有在雲端真的完全沒有資料時，才上傳初始設定
+                                saveStateToCloud(); 
                             }
-                        }, (error) => console.error("連線錯誤:", error));
+                            updateUI(); // 確保每次雲端資料更新時，都會強制重新渲染畫面
+                        }, (error) => console.error("狀態連線錯誤:", error));
 
                         // 2. 監聽所有會員的選票
                         const votesColl = collection(db, 'artifacts', appId, 'public', 'data', 'voting_votes');
@@ -290,10 +306,10 @@
                                 votesHistory.push({ voter: docSnap.id, votes: docSnap.data().votes });
                             });
                             updateUI();
-                        }, (error) => console.error("連線錯誤:", error));
+                        }, (error) => console.error("選票連線錯誤:", error));
                     }
                 } catch (error) {
-                    console.error("Firebase auth error:", error);
+                    console.error("Firebase setup error:", error);
                     updateUI(); // 若雲端失敗則用本機運行
                 }
             } else {
@@ -430,7 +446,7 @@
             }
             let html = '';
             categories.forEach(category => {
-                const list = nominees[category];
+                const list = nominees[category] || []; // 加上防護，避免因同步落差導致錯誤
                 html += `
                 <div class="mb-8 last:mb-0">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
@@ -463,11 +479,11 @@
         // ================= 會員投票功能 =================
         function renderVotingSection() {
             const container = document.getElementById('voting-categories-container');
-            container.innerHTML = '';
+            let html = '';
             let hasAnyNominee = false;
 
             categories.forEach(category => {
-                const catNominees = nominees[category];
+                const catNominees = nominees[category] || []; // 加上防護機制
                 if (catNominees.length === 0) return; 
                 hasAnyNominee = true;
                 let optionsHTML = catNominees.map(name => `
@@ -480,7 +496,7 @@
                     </label>
                 `).join('');
 
-                container.innerHTML += `
+                html += `
                     <div class="bg-gray-50 rounded-lg p-5 border border-gray-100">
                         <h3 class="text-lg font-bold text-blue-900 mb-4 border-b border-gray-200 pb-2">
                             ${categoryIcons[category]} ${category}
@@ -493,8 +509,12 @@
             });
 
             if (!hasAnyNominee) {
-                container.innerHTML = `<div class="text-center py-10 text-gray-500">負責人尚未設定任何候選人，無法進行投票。<br><span class="text-sm mt-2 block">(若負責人已設定，請稍候，畫面將自動同步更新)</span></div>`;
+                // 如果暫時沒有候選人，顯示等待同步的提示
+                html = `<div class="text-center py-10 text-gray-500">負責人尚未設定任何候選人，無法進行投票。<br><span class="text-sm mt-2 block text-blue-500 font-medium">(系統正持續與雲端同步，若負責人已設定，請稍候...)</span></div>`;
             }
+            
+            // 一次性替換 HTML，提升渲染效能與穩定度
+            container.innerHTML = html;
         }
 
         window.submitVote = async function() {
